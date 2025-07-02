@@ -61,7 +61,7 @@ public class CodeScreen extends Screen {
         addDrawableChild(ButtonWidget.builder(
                         Text.literal("🌐"),
                         button -> {
-                            String link = "https://pygrammerik.github.io/docsminecode"; // заменяем на нужную ссылку
+                            String link = "https://pygrammerik.github.io/minecode/"; // заменяем на нужную ссылку
                             if (link != null && !link.isEmpty()) {
                                 Util.getOperatingSystem().open(link);
                             }
