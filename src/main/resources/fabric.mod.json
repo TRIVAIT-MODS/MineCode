@@ -1,0 +1,37 @@
+{
+	"schemaVersion": 1,
+	"id": "minecode",
+	"version": "${version}",
+	"name": "MineCode",
+	"description": "This mod adds simple code menu in your game! Website and idea by Sooshka",
+	"authors": [
+		"TRIVAIT"
+	],
+	"contact": {
+		"homepage": "https://modrinth.com/user/Trivait",
+		"sources": "https://github.com/TRIVAIT-MODS/MineCode"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/minecode/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"org.trivait.minecode.MineCode"
+		],
+		"client": [
+			"org.trivait.minecode.MineCodeClient"
+		]
+	},
+	"mixins": [
+		"minecode.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.16.14",
+		"minecraft": "~1.21",
+		"java": ">=21",
+		"fabric-api": "*"
+	},
+	"suggests": {
+		"another-mod": "*"
+	}
+}

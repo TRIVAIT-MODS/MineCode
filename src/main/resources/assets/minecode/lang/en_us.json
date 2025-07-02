@@ -1,0 +1,15 @@
+{
+  "key.autocode.open_menu": "Open Code Menu",
+  "key.autocode.run_script": "Run Script",
+  "screen.autocode.title": "Code Menu",
+  "screen.autocode.done": "Done",
+  "screen.autocode.del": "🗑",
+  "screen.autocode.confirm_delete": "",
+  "screen.autocode.confirm_delete.message": "Do you want delete ALL code?",
+  "screen.autocode.yes": "Yes!",
+  "screen.autocode.no": "No",
+  "minecode.errors.label": "Errors: ",
+  "minecode.button.copy.tooltip": "Copy code",
+  "minecode.button.link.tooltip": "Open documentation",
+  "minecode.button.clear.tooltip": "Delete code"
+}

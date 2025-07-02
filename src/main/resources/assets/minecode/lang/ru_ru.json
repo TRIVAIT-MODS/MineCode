@@ -1,0 +1,15 @@
+{
+  "key.autocode.open_menu": "Открыть код меню",
+  "key.autocode.run_script": "Запустить скрипт",
+  "screen.autocode.title": "Код Меню",
+  "screen.autocode.done": "Готово",
+  "screen.autocode.confirm_delete": "",
+  "screen.autocode.confirm_delete.message": "Вы точно хотите удалить весь код?",
+  "screen.autocode.yes": "Да",
+  "screen.autocode.no": "Нет",
+  "minecode.errors.label": "Ошибок: ",
+  "minecode.button.copy.tooltip": "Скопировать код",
+  "minecode.button.link.tooltip": "Открыть документацию",
+  "minecode.button.clear.tooltip": "Удалить весь код"
+
+}
