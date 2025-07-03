@@ -313,7 +313,7 @@ public class CustomTextAreaWidget extends ClickableWidget implements Element, Se
 
 
         cursorTimer++;
-        if (cursorTimer % 15 == 0) cursorVisible = !cursorVisible;
+        if (cursorTimer % 30 == 0) cursorVisible = !cursorVisible;
 
         if (cursorVisible && isFocused) {
             if (cursorLine >= scrollOffset && cursorLine < scrollOffset + visibleLines && cursorLine < lines.size()) {

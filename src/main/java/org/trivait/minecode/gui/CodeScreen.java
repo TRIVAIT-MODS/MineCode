@@ -10,6 +10,7 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Util;
 import org.trivait.minecode.util.ConfigManager;
 import org.trivait.minecode.util.KeyBindings;
+import net.minecraft.client.render.GameRenderer;
 
 public class CodeScreen extends Screen {
     private CustomTextAreaWidget codeEditor;
