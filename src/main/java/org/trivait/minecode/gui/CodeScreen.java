@@ -10,9 +10,12 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Util;
 import org.trivait.minecode.util.ConfigManager;
 import org.trivait.minecode.util.KeyBindings;
+import net.minecraft.client.render.GameRenderer;
+
 
 public class CodeScreen extends Screen {
     private CustomTextAreaWidget codeEditor;
+
 
 
     public CodeScreen() {
@@ -109,7 +112,7 @@ public class CodeScreen extends Screen {
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         RenderSystem.enableBlend();
-        context.fill(0, 0, this.width, this.height, 0xAA000000);
+        RenderSystem.defaultBlendFunc();
         super.render(context, mouseX, mouseY, delta);
         context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 20, 0xFFFFFF);
     }

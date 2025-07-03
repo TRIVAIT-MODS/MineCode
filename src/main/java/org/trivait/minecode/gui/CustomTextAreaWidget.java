@@ -281,8 +281,8 @@ public class CustomTextAreaWidget extends ClickableWidget implements Element, Se
         int lineHeight = tr.fontHeight;
         String errLabel = Text.translatable("minecode.errors.label").getString() + " " + errorLines.size();
 
-
-        context.fill(posX, posY, posX + areaWidth, posY + areaHeight, 0x66000000);
+        context.fill(posX-1, posY-1, posX + areaWidth+1, posY + areaHeight+1, 0x66FFFFFF);
+        context.fill(posX, posY, posX + areaWidth, posY + areaHeight, 0x99000000);
 
         int visibleLines = getMaxVisibleLines();
 
@@ -313,7 +313,7 @@ public class CustomTextAreaWidget extends ClickableWidget implements Element, Se
 
 
         cursorTimer++;
-        if (cursorTimer % 15 == 0) cursorVisible = !cursorVisible;
+        if (cursorTimer % 30 == 0) cursorVisible = !cursorVisible;
 
         if (cursorVisible && isFocused) {
             if (cursorLine >= scrollOffset && cursorLine < scrollOffset + visibleLines && cursorLine < lines.size()) {
