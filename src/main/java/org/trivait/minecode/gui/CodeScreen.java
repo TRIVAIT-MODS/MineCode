@@ -79,8 +79,8 @@ public class CodeScreen extends Screen {
                             MinecraftClient.getInstance().setScreen(new ConfirmClearScreen(
                                     () -> {
                                         codeEditor.setText("");
-                                        MinecraftClient.getInstance().keyboard.setClipboard("");
-                                        MinecraftClient.getInstance().setScreen(this); // вернуться обратно
+                                        ConfigManager.saveScript("");
+                                        this.client.setScreen(new CodeScreen());
                                     },
                                     () -> MinecraftClient.getInstance().setScreen(this)
                             ));
