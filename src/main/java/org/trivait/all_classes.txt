@@ -1,0 +1,2437 @@
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\MineCode.java =====
+
+package org.trivait.minecode;
+
+import net.fabricmc.api.ModInitializer;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class MineCode implements ModInitializer {
+	public static final String MOD_ID = "minecode";
+	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+
+	@Override
+	public void onInitialize() {
+	}
+}
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\MineCodeClient.java =====
+
+package org.trivait.minecode;
+
+import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.util.InputUtil;
+import org.lwjgl.glfw.GLFW;
+import org.trivait.minecode.engine.ScriptManager;
+import org.trivait.minecode.engine.functions.*;
+import org.trivait.minecode.ui.ManagerScreen;
+
+public class MineCodeClient implements ClientModInitializer {
+    public static final String MOD_ID = "minecode";
+
+    private static KeyBinding openMenuKey;
+    private static KeyBinding runSelectedKey;
+    private static KeyBinding stopScriptKey;
+
+    @Override
+    public void onInitializeClient() {
+        openMenuKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "minecode.menu.open",
+                InputUtil.Type.KEYSYM,
+                GLFW.GLFW_KEY_M,
+                "MineCode"
+        ));
+        runSelectedKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "minecode.menu.run",
+                InputUtil.Type.KEYSYM,
+                GLFW.GLFW_KEY_F6,
+                "MineCode"
+        ));
+        stopScriptKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "minecode.menu.stop",
+                InputUtil.Type.KEYSYM,
+                GLFW.GLFW_KEY_F7,
+                "MineCode"
+        ));
+
+        FunctionRegistry.register(new SayFunction());
+        FunctionRegistry.register(new WaitFunction());
+        FunctionRegistry.register(new LookFunction());
+        FunctionRegistry.register(new WalkFunction());
+        FunctionRegistry.register(new IntFunction());
+        FunctionRegistry.register(new BooleanFunction());
+        FunctionRegistry.register(new StringFunction());
+        FunctionRegistry.register(new IfFunction());
+        FunctionRegistry.register(new WhileFunction());
+        FunctionRegistry.register(new DoWhileFunction());
+        FunctionRegistry.register(new ForFunction());
+        FunctionRegistry.register(new SwitchFunction());
+
+        ScriptManager.init();
+
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            while (openMenuKey.wasPressed()) {
+                client.setScreen(new ManagerScreen());
+            }
+            while (runSelectedKey.wasPressed()) {
+                ScriptManager.runSelected(client);
+            }
+            while (stopScriptKey.wasPressed()) {
+                ScriptManager.stopRunning();
+            }
+            ScriptManager.tick(client);
+        });
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\Instruction.java =====
+
+package org.trivait.minecode.engine;
+
+public class Instruction {
+    public enum Type {
+        SAY, WAIT, LOOK, WALK, STOP,
+        VAR_DECL, VAR_SET,
+        IF, ELSE, ENDIF,
+        WHILE, ENDWHILE,
+        DO, WHILE_AFTER_DO,
+        FOR, ENDFOR,
+        SWITCH, CASE, DEFAULT, ENDSWITCH
+    }
+
+    public final Type type;
+    public final String text;
+    public final String text2;
+    public final String text3;
+    public final int ticks;
+    public final float yaw, pitch;
+    public final int walkDirection;
+
+    private Instruction(Type type, String text, String text2, String text3,
+                        int ticks, float yaw, float pitch, int walkDirection) {
+        this.type = type;
+        this.text = text;
+        this.text2 = text2;
+        this.text3 = text3;
+        this.ticks = ticks;
+        this.yaw = yaw;
+        this.pitch = pitch;
+        this.walkDirection = walkDirection;
+    }
+
+    // Игровые
+    public static Instruction say(String t) { return new Instruction(Type.SAY, t,null,null,0,0,0,0); }
+    public static Instruction waitTicks(int t) { return new Instruction(Type.WAIT,null,null,null,t,0,0,0); }
+    public static Instruction look(float yaw,float pitch){return new Instruction(Type.LOOK,null,null,null,0,yaw,pitch,0);}
+    public static Instruction walkForward(int ticks){int dir=ticks>=0?1:-1;return new Instruction(Type.WALK,null,null,null,Math.abs(ticks),0,0,dir);}
+    public static Instruction stop(){return new Instruction(Type.STOP,null,null,null,0,0,0,0);}
+
+    // Переменные
+    public static Instruction declareVar(String type,String name,String init){return new Instruction(Type.VAR_DECL,name,type,init,0,0,0,0);}
+    public static Instruction setVar(String name,String expr){return new Instruction(Type.VAR_SET,name,expr,null,0,0,0,0);}
+
+    // Управляющие
+    public static Instruction ifCond(String cond){return new Instruction(Type.IF,cond,null,null,0,0,0,0);}
+    public static Instruction elseBlock(){return new Instruction(Type.ELSE,null,null,null,0,0,0,0);}
+    public static Instruction endIf(){return new Instruction(Type.ENDIF,null,null,null,0,0,0,0);}
+    public static Instruction whileLoop(String cond){return new Instruction(Type.WHILE,cond,null,null,0,0,0,0);}
+    public static Instruction endWhile(){return new Instruction(Type.ENDWHILE,null,null,null,0,0,0,0);}
+    public static Instruction doBlock(){return new Instruction(Type.DO,null,null,null,0,0,0,0);}
+    public static Instruction whileAfterDo(String cond){return new Instruction(Type.WHILE_AFTER_DO,cond,null,null,0,0,0,0);}
+    public static Instruction forLoop(String init,String cond,String update){return new Instruction(Type.FOR,init,cond,update,0,0,0,0);}
+    public static Instruction endFor(){return new Instruction(Type.ENDFOR,null,null,null,0,0,0,0);}
+    public static Instruction switchExpr(String expr){return new Instruction(Type.SWITCH,expr,null,null,0,0,0,0);}
+    public static Instruction caseExpr(String expr){return new Instruction(Type.CASE,expr,null,null,0,0,0,0);}
+    public static Instruction defaultCase(){return new Instruction(Type.DEFAULT,null,null,null,0,0,0,0);}
+    public static Instruction endSwitch(){return new Instruction(Type.ENDSWITCH,null,null,null,0,0,0,0);}
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\Parser.java =====
+
+// src/main/java/org/trivait/minecode/engine/Parser.java
+package org.trivait.minecode.engine;
+
+import org.trivait.minecode.engine.functions.FunctionRegistry;
+import org.trivait.minecode.engine.functions.MineFunction;
+
+import java.util.*;
+
+public class Parser {
+    public static List<Instruction> parse(String code) {
+        List<Token> tokens = tokenize(code);
+        List<Instruction> program = new ArrayList<>();
+        Deque<Instruction.Type> blockStack = new ArrayDeque<>();
+
+        List<String> cur = new ArrayList<>();
+        int lineNo = 1;
+
+        for (Token tk : tokens) {
+            String s = tk.lexeme;
+            lineNo = tk.line;
+
+            // закрытие блока
+            if ("}".equals(s)) {
+                // завершить возможный текущий стейтмент до "}"
+                if (!cur.isEmpty()) {
+                    program.addAll(parseStatement(cur, lineNo));
+                    cur.clear();
+                }
+                if (blockStack.isEmpty()) {
+                    throw new RuntimeException("Unexpected } at line " + lineNo);
+                }
+                Instruction.Type t = blockStack.pop();
+                switch (t) {
+                    case IF -> program.add(Instruction.endIf());
+                    case WHILE -> program.add(Instruction.endWhile());
+                    case FOR -> program.add(Instruction.endFor());
+                    case SWITCH -> program.add(Instruction.endSwitch());
+                    case DO -> { /* do закрывается while(...) — тут ничего не добавляем */ }
+                }
+                continue;
+            }
+
+            cur.add(s);
+
+            // окончание стейтмента по ";"
+            if (";".equals(s)) {
+                program.addAll(parseStatement(cur, lineNo));
+                cur.clear();
+                continue;
+            }
+
+            // открытие блока "{"
+            if ("{".equals(s) && !cur.isEmpty()) {
+                List<Instruction> ins = parseStatement(cur, lineNo);
+                program.addAll(ins);
+                if (!ins.isEmpty()) {
+                    Instruction.Type type = ins.get(0).type;
+                    switch (type) {
+                        case IF -> blockStack.push(Instruction.Type.IF);
+                        case WHILE -> blockStack.push(Instruction.Type.WHILE);
+                        case FOR -> blockStack.push(Instruction.Type.FOR);
+                        case SWITCH -> blockStack.push(Instruction.Type.SWITCH);
+                        case DO -> blockStack.push(Instruction.Type.DO);
+                        default -> { /* не блоковая конструкция */ }
+                    }
+                }
+                cur.clear();
+            }
+        }
+
+        // хвост без ";" — допустим для одиночных выражений/команд
+        if (!cur.isEmpty()) {
+            program.addAll(parseStatement(cur, lineNo));
+        }
+
+        return program;
+    }
+
+    // разбор одного стейтмента
+    private static List<Instruction> parseStatement(List<String> raw, int lineNo) {
+        List<String> t = normalizeTokens(raw);
+        if (t.isEmpty()) return List.of();
+
+        String head = t.get(0).toLowerCase(Locale.ROOT);
+
+        // присваивание: name = expr
+        if (t.size() >= 3 && "=".equals(t.get(1))) {
+            String name = t.get(0);
+            String expr = String.join(" ", t.subList(2, t.size())).trim();
+            return List.of(Instruction.setVar(name, expr));
+        }
+
+        // ключевые слова блоков перенаправляем на соответствующие функции
+        if (head.equals("else") || head.equals("endif")) {
+            MineFunction fn = FunctionRegistry.byId("if");
+            if (fn == null) throw new RuntimeException("Unknown function at line " + lineNo + ": if (needed for else/endif)");
+            return fn.parseTokens(t);
+        }
+        if (head.equals("endwhile")) {
+            MineFunction fn = FunctionRegistry.byId("while");
+            if (fn == null) throw new RuntimeException("Unknown function at line " + lineNo + ": while (needed for endwhile)");
+            return fn.parseTokens(t);
+        }
+        if (head.equals("endfor")) {
+            MineFunction fn = FunctionRegistry.byId("for");
+            if (fn == null) throw new RuntimeException("Unknown function at line " + lineNo + ": for (needed for endfor)");
+            return fn.parseTokens(t);
+        }
+        if (head.equals("case") || head.equals("default") || head.equals("endswitch")) {
+            MineFunction fn = FunctionRegistry.byId("switch");
+            if (fn == null) throw new RuntimeException("Unknown function at line " + lineNo + ": switch (needed for case/default/endswitch)");
+            return fn.parseTokens(t);
+        }
+
+        // обычная функция
+        String baseId = head.contains(".") ? head.substring(0, head.indexOf('.')) : head;
+        MineFunction fn = FunctionRegistry.byId(baseId);
+        if (fn == null) fn = FunctionRegistry.byId(head);
+        if (fn == null) throw new RuntimeException("Unknown function at line " + lineNo + ": " + head);
+
+        return fn.parseTokens(t);
+    }
+
+    // токенизация всего текста с учётом кавычек и строк
+    private static List<Token> tokenize(String code) {
+        List<Token> res = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        boolean inStr = false;
+        int line = 1;
+
+        for (int i = 0; i < code.length(); i++) {
+            char c = code.charAt(i);
+
+            if (c == '\n') {
+                if (inStr) {
+                    cur.append(c);
+                } else {
+                    flushToken(res, cur, line);
+                    line++;
+                }
+                continue;
+            }
+
+            if (c == '"') {
+                cur.append(c);
+                if (inStr) {
+                    // конец строкового литерала
+                    res.add(new Token(cur.toString(), line));
+                    cur.setLength(0);
+                    inStr = false;
+                } else {
+                    inStr = true;
+                }
+                continue;
+            }
+
+            if (inStr) {
+                cur.append(c);
+                continue;
+            }
+
+            if (Character.isWhitespace(c)) {
+                flushToken(res, cur, line);
+                continue;
+            }
+
+            // спецсимволы как отдельные токены
+            if ("(){};:.".indexOf(c) >= 0) {
+                flushToken(res, cur, line);
+                res.add(new Token(String.valueOf(c), line));
+                continue;
+            }
+
+            cur.append(c);
+        }
+
+        flushToken(res, cur, line);
+        return res;
+    }
+
+    private static void flushToken(List<Token> res, StringBuilder cur, int line) {
+        if (cur.length() > 0) {
+            res.add(new Token(cur.toString(), line));
+            cur.setLength(0);
+        }
+    }
+
+    // нормализация токенов: схлопывание "walk . forward" -> "walk.forward", удаление финального ";"
+    private static List<String> normalizeTokens(List<String> tokens) {
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < tokens.size(); i++) {
+            String s = tokens.get(i);
+
+            // убрать финальный ";" внутри стейтмента
+            if (";".equals(s)) {
+                // финальная точка с запятой не нужна для функции
+                continue;
+            }
+
+            // схлопывание "name" "." "member" → "name.member"
+            if (i + 2 < tokens.size() && ".".equals(tokens.get(i + 1))) {
+                String merged = (s + "." + tokens.get(i + 2)).toLowerCase(Locale.ROOT);
+                out.add(merged);
+                i += 2;
+                continue;
+            }
+
+            out.add(s);
+        }
+
+        // убрать ведущую/замыкающую фигурную скобку из токенов стейтмента — блоки мы обрабатываем выше
+        if (!out.isEmpty() && "{".equals(out.get(out.size() - 1))) {
+            out.remove(out.size() - 1);
+        }
+
+        return out;
+    }
+
+    // служебные структуры
+    private static class Token {
+        final String lexeme;
+        final int line;
+        Token(String lexeme, int line) { this.lexeme = lexeme; this.line = line; }
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\Runner.java =====
+
+// src/main/java/org/trivait/minecode/engine/Runner.java
+package org.trivait.minecode.engine;
+
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.text.Text;
+
+import java.util.*;
+
+public class Runner {
+    private final List<Instruction> program;
+    private int pc = 0;
+    private int wait = 0;
+    private boolean walking = false;
+    private int walkLeft = 0;
+    private int walkDir = 0; // 1 вперед, -1 назад
+    private boolean stopped = false;
+
+    private final Map<String, Object> vars = new HashMap<>();
+    private final Deque<Integer> whileStack = new ArrayDeque<>();
+    private final Deque<Integer> doStack = new ArrayDeque<>();
+    private final Deque<ForFrame> forStack = new ArrayDeque<>();
+    private final Deque<SwitchFrame> switchStack = new ArrayDeque<>();
+
+    public Runner(List<Instruction> program) {
+        this.program = program;
+    }
+
+    public boolean tick(MinecraftClient client) {
+        if (stopped) return false;
+        PlayerEntity p = client.player;
+        if (p == null) return true;
+
+        if (wait > 0) { wait--; return true; }
+
+        if (walking) {
+            if (walkDir == 1) client.player.input.movementForward = 1.0f;
+            else if (walkDir == -1) client.player.input.movementForward = -1.0f;
+            walkLeft--;
+            if (walkLeft <= 0) {
+                walking = false;
+                client.player.input.movementForward = 0.0f;
+            }
+            return true;
+        }
+
+        if (pc >= program.size()) return false;
+        Instruction ins = program.get(pc++);
+
+        switch (ins.type) {
+            // ===== Игровые действия =====
+            case SAY -> {
+                Object v = evalExpr(ins.text);
+                client.inGameHud.getChatHud().addMessage(Text.literal(String.valueOf(v)));
+            }
+            case WAIT -> wait = ins.ticks;
+            case LOOK -> {
+                p.setYaw(p.getYaw() + ins.yaw);
+                p.setPitch(clampPitch(p.getPitch() + ins.pitch));
+            }
+            case WALK -> {
+                walking = true;
+                walkLeft = ins.ticks;
+                walkDir = ins.walkDirection;
+            }
+            case STOP -> {
+                stopped = true;
+                client.player.input.movementForward = 0.0f;
+                return false;
+            }
+
+            // ===== Переменные =====
+            case VAR_DECL -> {
+                String name = ins.text;
+                String type = ins.text2;
+                String init = stripOuterParens(ins.text3);
+                Object val = null;
+                if (init != null) val = evalExpr(init);
+                vars.put(name, castToType(val, type));
+            }
+            case VAR_SET -> {
+                String name = ins.text;
+                Object val = evalExpr(stripOuterParens(ins.text2));
+                Object prev = vars.get(name);
+                String type = typeOf(prev);
+                vars.put(name, castToType(val, type));
+            }
+
+            // ===== IF / ELSE =====
+            case IF -> {
+                boolean ok = evalBool(stripOuterParens(ins.text));
+                if (!ok) {
+                    skipUntil(Set.of(Instruction.Type.ELSE, Instruction.Type.ENDIF));
+                }
+            }
+            case ELSE -> skipUntil(Set.of(Instruction.Type.ENDIF));
+            case ENDIF -> { /* конец if */ }
+
+            // ===== WHILE =====
+            case WHILE -> {
+                boolean ok = evalBool(stripOuterParens(ins.text));
+                if (ok) {
+                    whileStack.push(pc - 1);
+                } else {
+                    skipUntil(Set.of(Instruction.Type.ENDWHILE));
+                }
+            }
+            case ENDWHILE -> {
+                if (whileStack.isEmpty()) break;
+                int whilePos = whileStack.peek();
+                pc = whilePos;
+            }
+
+            // ===== DO ... WHILE =====
+            case DO -> doStack.push(pc - 1);
+            case WHILE_AFTER_DO -> {
+                if (doStack.isEmpty()) break;
+                int doPos = doStack.peek();
+                boolean ok = evalBool(stripOuterParens(ins.text));
+                if (ok) pc = doPos + 1;
+                else doStack.pop();
+            }
+
+            // ===== FOR =====
+            case FOR -> {
+                evalAssign(ins.text); // init (внутри могут быть скобки — игнорируем)
+                ForFrame frame = new ForFrame(pc - 1, stripOuterParens(ins.text2), stripOuterParens(ins.text3));
+                forStack.push(frame);
+                boolean ok = evalBool(frame.cond);
+                if (!ok) {
+                    skipUntil(Set.of(Instruction.Type.ENDFOR));
+                    forStack.pop();
+                }
+            }
+            case ENDFOR -> {
+                if (forStack.isEmpty()) break;
+                ForFrame f = forStack.peek();
+                evalAssign(f.update);
+                boolean ok = evalBool(f.cond);
+                if (ok) pc = f.forPos + 1;
+                else forStack.pop();
+            }
+
+            // ===== SWITCH =====
+            case SWITCH -> {
+                Object val = evalExpr(stripOuterParens(ins.text));
+                SwitchFrame sf = new SwitchFrame(pc - 1, val);
+                switchStack.push(sf);
+            }
+            case CASE -> {
+                if (switchStack.isEmpty()) break;
+                SwitchFrame sf = switchStack.peek();
+                if (sf.matched || sf.inDefault) break;
+                Object cur = evalExpr(stripOuterParens(ins.text));
+                if (Objects.equals(sf.value, cur)) sf.matched = true;
+                else skipUntil(Set.of(Instruction.Type.CASE, Instruction.Type.DEFAULT, Instruction.Type.ENDSWITCH));
+            }
+            case DEFAULT -> {
+                if (switchStack.isEmpty()) break;
+                SwitchFrame sf = switchStack.peek();
+                if (!sf.matched) sf.inDefault = true;
+            }
+            case ENDSWITCH -> {
+                if (!switchStack.isEmpty()) switchStack.pop();
+            }
+        }
+        return true;
+    }
+
+    public void stop() {
+        stopped = true;
+        walkLeft = 0;
+        walking = false;
+        walkDir = 0;
+    }
+
+    private float clampPitch(float v) {
+        if (v > 90) v = 90;
+        if (v < -90) v = -90;
+        return v;
+    }
+
+    private static class ForFrame {
+        final int forPos;
+        final String cond;
+        final String update;
+        ForFrame(int forPos, String cond, String update) { this.forPos = forPos; this.cond = cond; this.update = update; }
+    }
+    private static class SwitchFrame {
+        final int switchPos;
+        final Object value;
+        boolean matched = false;
+        boolean inDefault = false;
+        SwitchFrame(int pos, Object val) { this.switchPos = pos; this.value = val; }
+    }
+
+    private void skipUntil(Set<Instruction.Type> typeSet) {
+        while (pc < program.size()) {
+            Instruction next = program.get(pc);
+            if (typeSet.contains(next.type)) { pc++; break; }
+            pc++;
+        }
+    }
+
+    // ==== Вычисления выражений с поддержкой внешних () ====
+    private Object evalExpr(String expr) {
+        if (expr == null) return null;
+        String s = stripOuterParens(expr.trim());
+        if (s.isEmpty()) return "";
+
+        // строка в кавычках
+        if (s.startsWith("\"") && s.endsWith("\"") && s.length() >= 2) {
+            return s.substring(1, s.length() - 1);
+        }
+        // булево
+        if (s.equals("true")) return Boolean.TRUE;
+        if (s.equals("false")) return Boolean.FALSE;
+        // число
+        try {
+            if (s.contains(".")) return Double.parseDouble(s);
+            return Integer.parseInt(s);
+        } catch (NumberFormatException ignored) {}
+
+        // бинарные операции: a + 1, a < 10, a == 5, x && y
+        String[] parts = s.split(" ");
+        if (parts.length == 3) {
+            Object left = evalExpr(parts[0]);
+            String op = parts[1];
+            Object right = evalExpr(parts[2]);
+            return applyOp(left, op, right);
+        }
+
+        // переменная
+        if (vars.containsKey(s)) return vars.get(s);
+
+        // иначе — строка
+        return s;
+    }
+
+    private String stripOuterParens(String s) {
+        if (s == null) return null;
+        s = s.trim();
+        if (s.startsWith("(") && s.endsWith(")") && s.length() >= 2) {
+            return s.substring(1, s.length() - 1).trim();
+        }
+        // убрать завершающее ":" в case
+        if (s.endsWith(":")) return s.substring(0, s.length() - 1).trim();
+        return s;
+    }
+
+    private Object applyOp(Object left, String op, Object right) {
+        if (op.equals("==")) return Objects.equals(left, right);
+        if (op.equals("!=")) return !Objects.equals(left, right);
+        if (op.equals("&&")) return toBool(left) && toBool(right);
+        if (op.equals("||")) return toBool(left) || toBool(right);
+
+        double l = toNumber(left);
+        double r = toNumber(right);
+        switch (op) {
+            case "+" -> { return (isInt(left) && isInt(right)) ? (int)(l + r) : (l + r); }
+            case "-" -> { return (isInt(left) && isInt(right)) ? (int)(l - r) : (l - r); }
+            case "*" -> { return (isInt(left) && isInt(right)) ? (int)(l * r) : (l * r); }
+            case "/" -> { return (isInt(left) && isInt(right)) ? (int)(l / r) : (l / r); }
+            case "<" -> { return l < r; }
+            case ">" -> { return l > r; }
+            case "<=" -> { return l <= r; }
+            case ">=" -> { return l >= r; }
+        }
+        throw new RuntimeException("Unsupported op: " + op);
+    }
+
+    private boolean evalBool(String expr) {
+        Object v = evalExpr(expr);
+        return toBool(v);
+    }
+
+    private void evalAssign(String assign) {
+        String s = assign.trim();
+        // снимаем внешние скобки: (i = i + 1)
+        s = stripOuterParens(s);
+        String compact = s.replace(" ", "");
+        int idx = compact.indexOf('=');
+        if (idx < 0) throw new RuntimeException("Bad assign: " + assign);
+        String name = compact.substring(0, idx);
+        String expr = s.substring(s.indexOf('=') + 1).trim();
+        Object val = evalExpr(expr);
+        Object prev = vars.get(name);
+        String type = typeOf(prev);
+        vars.put(name, castToType(val, type));
+    }
+
+    private boolean toBool(Object v) {
+        if (v instanceof Boolean b) return b;
+        if (v instanceof Number n) return n.doubleValue() != 0.0;
+        if (v instanceof String s) return !s.isEmpty();
+        return v != null;
+    }
+    private double toNumber(Object v) {
+        if (v instanceof Number n) return n.doubleValue();
+        if (v instanceof Boolean b) return b ? 1 : 0;
+        if (v instanceof String s) {
+            try { return Double.parseDouble(s); } catch (Exception e) { throw new RuntimeException("Not a number: " + s); }
+        }
+        throw new RuntimeException("Not a number: " + v);
+    }
+    private boolean isInt(Object v) { return v instanceof Integer; }
+
+    private String typeOf(Object v) {
+        if (v instanceof Integer) return "int";
+        if (v instanceof Boolean) return "boolean";
+        if (v instanceof String) return "String";
+        if (v instanceof Double || v instanceof Float) return "double";
+        return "String";
+    }
+
+    private Object castToType(Object val, String type) {
+        if (type == null) return val;
+
+        switch (type) {
+            case "int" -> {
+                if (val == null) return 0;
+                if (val instanceof Number n) return n.intValue();
+                if (val instanceof Boolean b) return b ? 1 : 0;
+                if (val instanceof String s) {
+                    try { return Integer.parseInt(s.trim()); }
+                    catch (NumberFormatException e) { throw new RuntimeException("Cannot cast to int: " + s); }
+                }
+                throw new RuntimeException("Cannot cast to int: " + val);
+            }
+            case "boolean" -> {
+                if (val == null) return false;
+                return toBool(val);
+            }
+            case "String" -> {
+                if (val == null) return "";
+                return String.valueOf(val);
+            }
+            case "double" -> {
+                if (val == null) return 0.0d;
+                if (val instanceof Number n) return n.doubleValue();
+                if (val instanceof Boolean b) return b ? 1.0d : 0.0d;
+                if (val instanceof String s) {
+                    try { return Double.parseDouble(s.trim()); }
+                    catch (NumberFormatException e) { throw new RuntimeException("Cannot cast to double: " + s); }
+                }
+                throw new RuntimeException("Cannot cast to double: " + val);
+            }
+            case "float" -> {
+                if (val == null) return 0.0f;
+                if (val instanceof Number n) return n.floatValue();
+                if (val instanceof Boolean b) return b ? 1.0f : 0.0f;
+                if (val instanceof String s) {
+                    try { return Float.parseFloat(s.trim()); }
+                    catch (NumberFormatException e) { throw new RuntimeException("Cannot cast to float: " + s); }
+                }
+                throw new RuntimeException("Cannot cast to float: " + val);
+            }
+            default -> {
+                return String.valueOf(val);
+            }
+        }
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\ScriptManager.java =====
+
+// src/main/java/org/trivait/minecode/engine/ScriptManager.java
+package org.trivait.minecode.engine;
+
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.text.Text;
+import org.trivait.minecode.engine.functions.FunctionRegistry;
+import org.trivait.minecode.util.PathsUtil;
+import org.trivait.minecode.util.ToastUtil;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+
+public class ScriptManager {
+    private static Path selectedScript;
+    private static volatile Runner currentRunner;
+
+    public static void init() {
+        try {
+            Files.createDirectories(PathsUtil.getScriptsDir());
+        } catch (IOException ignored){}
+    }
+
+    public static void select(Path p) {
+        selectedScript = p;
+    }
+
+    public static void runSelected(MinecraftClient client) {
+        if (selectedScript == null) {
+            ToastUtil.infoText(Text.literal("Скрипт не выбран"));
+            return;
+        }
+        if (currentRunner != null) {
+            ToastUtil.infoText(Text.literal("Скрипт уже выполняется"));
+            return;
+        }
+        try {
+            String code = Files.readString(selectedScript);
+            List<Instruction> program = Parser.parse(code);
+            currentRunner = new Runner(program);
+            ToastUtil.info("minecode.toast.running");
+        } catch (Exception e) {
+            ToastUtil.infoText(Text.literal("Ошибка: " + e.getMessage()));
+        }
+    }
+
+    public static void stopRunning() {
+        if (currentRunner != null) {
+            currentRunner.stop();
+            currentRunner = null;
+            ToastUtil.info("minecode.toast.stopped");
+        }
+    }
+
+    public static void tick(MinecraftClient client) {
+        if (currentRunner != null) {
+            boolean alive = currentRunner.tick(client);
+            if (!alive) currentRunner = null;
+        }
+    }
+
+    public static List<String> hintFor(String prefix) {
+        return FunctionRegistry.hintNames(prefix);
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\functions\BooleanFunction.java =====
+
+// src/main/java/org/trivait/minecode/engine/functions/BooleanFunction.java
+package org.trivait.minecode.engine.functions;
+
+import org.trivait.minecode.engine.Instruction;
+
+import java.util.List;
+
+public class BooleanFunction implements MineFunction {
+    @Override public String id() { return "boolean"; }
+    @Override public String tutorialKey() { return "minecode.api.boolean"; }
+    @Override public List<String> hints() { return List.of("boolean <name> = <true|false>"); }
+
+    @Override
+    public List<Instruction> parseTokens(List<String> tokens) {
+        if (tokens.size() >= 4 && "=".equals(tokens.get(2))) {
+            String name = tokens.get(1);
+            String value = String.join(" ", tokens.subList(3, tokens.size())).trim();
+            return List.of(Instruction.declareVar("boolean", name, value));
+        }
+        throw new RuntimeException("Usage: boolean <name> = <true|false>");
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\functions\DoWhileFunction.java =====
+
+// src/main/java/org/trivait/minecode/engine/functions/DoWhileFunction.java
+package org.trivait.minecode.engine.functions;
+
+import org.trivait.minecode.engine.Instruction;
+
+import java.util.List;
+
+public class DoWhileFunction implements MineFunction {
+    @Override public String id() { return "do"; }
+    @Override public String tutorialKey() { return "minecode.api.do"; }
+    @Override public List<String> hints() { return List.of("do { ... } while (<condition>)"); }
+
+    @Override
+    public List<Instruction> parseTokens(List<String> tokens) {
+        String head = tokens.get(0).toLowerCase();
+        if (head.equals("do")) {
+            return List.of(Instruction.doBlock());
+        } else if (head.equals("while")) {
+            String cond = String.join(" ", tokens.subList(1, tokens.size())).trim();
+            cond = stripOuterParens(cond.replace("{", "").trim());
+            return List.of(Instruction.whileAfterDo(cond));
+        }
+        throw new RuntimeException("Unknown do/while");
+    }
+
+    private String stripOuterParens(String s) {
+        if (s.startsWith("(") && s.endsWith(")") && s.length() >= 2) {
+            return s.substring(1, s.length()-1).trim();
+        }
+        return s;
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\functions\ForFunction.java =====
+
+// src/main/java/org/trivait/minecode/engine/functions/ForFunction.java
+package org.trivait.minecode.engine.functions;
+
+import org.trivait.minecode.engine.Instruction;
+
+import java.util.List;
+
+public class ForFunction implements MineFunction {
+    @Override public String id() { return "for"; }
+    @Override public String tutorialKey() { return "minecode.api.for"; }
+    @Override public List<String> hints() { return List.of("for (<init>; <condition>; <update>) { ... }", "endfor"); }
+
+    @Override
+    public List<Instruction> parseTokens(List<String> tokens) {
+        String head = tokens.get(0).toLowerCase();
+        if (head.equals("for")) {
+            // поддержка: for i=0; i<10; i=i+1
+            // или: for (i=0; i<10; i=i+1) {
+            String joined = String.join(" ", tokens.subList(1, tokens.size())).trim();
+            joined = joined.replace("{", "").trim();
+            joined = stripOuterParens(joined);
+            String[] parts = joined.split(";");
+            if (parts.length != 3) throw new RuntimeException("Usage: for init; condition; update");
+            return List.of(Instruction.forLoop(parts[0].trim(), parts[1].trim(), parts[2].trim()));
+        } else if (head.equals("endfor")) {
+            return List.of(Instruction.endFor());
+        }
+        throw new RuntimeException("Unknown for/endfor");
+    }
+
+    private String stripOuterParens(String s) {
+        s = s.trim();
+        if (s.startsWith("(") && s.endsWith(")") && s.length() >= 2) {
+            return s.substring(1, s.length()-1).trim();
+        }
+        return s;
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\functions\FunctionRegistry.java =====
+
+// src/main/java/org/trivait/minecode/engine/functions/FunctionRegistry.java
+package org.trivait.minecode.engine.functions;
+
+import java.util.*;
+
+public class FunctionRegistry {
+    private static final Map<String, MineFunction> FUNCTIONS = new LinkedHashMap<>();
+
+    public static void register(MineFunction fn) {
+        FUNCTIONS.put(fn.id().toUpperCase(Locale.ROOT), fn);
+    }
+
+    public static MineFunction byId(String id) {
+        if (id == null) return null;
+        return FUNCTIONS.get(id.toUpperCase(Locale.ROOT));
+    }
+
+    public static Collection<MineFunction> all() {
+        return FUNCTIONS.values();
+    }
+
+    // Хинты по префиксу токена, включая подфункции через "."
+    public static List<String> hintNames(String prefix) {
+        String p = prefix == null ? "" : prefix.toLowerCase(Locale.ROOT).trim();
+        List<String> res = new ArrayList<>();
+
+        if (p.contains(".")) {
+            String head = p.substring(0, p.indexOf('.'));
+            MineFunction fn = byId(head);
+            if (fn != null) {
+                // Собираем подфункции из hints() (они в формате walk.forward <ticks>)
+                Set<String> subs = new LinkedHashSet<>();
+                for (String h : fn.hints()) {
+                    String sig = h.toLowerCase(Locale.ROOT);
+                    if (sig.startsWith(head + ".")) {
+                        String sub = sig.split(" ")[0];
+                        subs.add(sub);
+                    }
+                }
+                for (String sub : subs) {
+                    if (p.isEmpty() || sub.startsWith(p)) res.add(sub);
+                }
+            }
+            return res;
+        }
+
+        for (MineFunction fn : FUNCTIONS.values()) {
+            String id = fn.id().toLowerCase(Locale.ROOT);
+            if (p.isEmpty() || id.startsWith(p)) res.add(fn.id());
+        }
+        return res;
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\functions\IfFunction.java =====
+
+package org.trivait.minecode.engine.functions;
+
+import org.trivait.minecode.engine.Instruction;
+
+import java.util.List;
+
+public class IfFunction implements MineFunction {
+    @Override public String id() { return "if"; }
+    @Override public String tutorialKey() { return "minecode.api.if"; }
+    @Override public List<String> hints() {
+        return List.of("if (<condition>) { ... }", "else { ... }", "endif / }");
+    }
+
+    @Override
+    public List<Instruction> parseTokens(List<String> tokens) {
+        String head = tokens.get(0).toLowerCase();
+        switch (head) {
+            case "if" -> {
+                // if (a > 5) {
+                String cond = String.join(" ", tokens.subList(1, tokens.size())).trim();
+                cond = stripOuterParens(cond.replace("{", "").trim());
+                return List.of(Instruction.ifCond(cond));
+            }
+            case "else" -> {
+                // else {
+                return List.of(Instruction.elseBlock());
+            }
+            case "endif" -> {
+                return List.of(Instruction.endIf());
+            }
+        }
+        throw new RuntimeException("Unknown if/else/endif");
+    }
+
+    private String stripOuterParens(String s) {
+        if (s.startsWith("(") && s.endsWith(")") && s.length() >= 2) {
+            return s.substring(1, s.length()-1).trim();
+        }
+        return s;
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\functions\IntFunction.java =====
+
+// src/main/java/org/trivait/minecode/engine/functions/IntFunction.java
+package org.trivait.minecode.engine.functions;
+
+import org.trivait.minecode.engine.Instruction;
+
+import java.util.List;
+
+public class IntFunction implements MineFunction {
+    @Override public String id() { return "int"; }
+    @Override public String tutorialKey() { return "minecode.api.int"; }
+    @Override public List<String> hints() { return List.of("int <name> = <value>"); }
+
+    @Override
+    public List<Instruction> parseTokens(List<String> tokens) {
+        if (tokens.size() >= 4 && "=".equals(tokens.get(2))) {
+            String name = tokens.get(1);
+            String value = String.join(" ", tokens.subList(3, tokens.size())).trim();
+            return List.of(Instruction.declareVar("int", name, value));
+        }
+        throw new RuntimeException("Usage: int <name> = <value>");
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\functions\LookFunction.java =====
+
+package org.trivait.minecode.engine.functions;
+
+import org.trivait.minecode.engine.Instruction;
+
+import java.util.List;
+
+public class LookFunction implements MineFunction {
+    @Override
+    public String id() { return "look"; }
+
+    @Override
+    public String tutorialKey() { return "minecode.api.look"; }
+
+    @Override
+    public List<String> hints() { return List.of("look <yaw> <pitch>"); }
+
+    @Override
+    public List<Instruction> parseTokens(List<String> tokens) {
+        if (tokens.size() != 3) throw new RuntimeException("LOOK requires yaw pitch");
+        float yaw = Float.parseFloat(tokens.get(1));
+        float pitch = Float.parseFloat(tokens.get(2));
+        return List.of(Instruction.look(yaw, pitch));
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\functions\MineFunction.java =====
+
+// src/main/java/org/trivait/minecode/engine/functions/MineFunction.java
+package org.trivait.minecode.engine.functions;
+
+import org.trivait.minecode.engine.Instruction;
+
+import java.util.List;
+
+public interface MineFunction {
+    String id();                // Полное имя функции: "walk" или "say"
+    String tutorialKey();       // Ключ перевода для описания на APIScreen
+    List<String> hints();       // Сигнатуры/варианты, включая подфункции через "."
+
+    List<Instruction> parseTokens(List<String> tokens); // Разбор токенов в инструкции
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\functions\SayFunction.java =====
+
+// src/main/java/org/trivait/minecode/engine/functions/SayFunction.java
+package org.trivait.minecode.engine.functions;
+
+import org.trivait.minecode.engine.Instruction;
+
+import java.util.List;
+
+public class SayFunction implements MineFunction {
+    @Override public String id() { return "say"; }
+    @Override public String tutorialKey() { return "minecode.api.say"; }
+    @Override public List<String> hints() { return List.of("say \"text\"", "say <expr|var>"); }
+
+    @Override
+    public List<Instruction> parseTokens(List<String> tokens) {
+        if (tokens.size() < 2) throw new RuntimeException("SAY requires text or expression");
+        String joined = String.join(" ", tokens.subList(1, tokens.size())).trim();
+        return List.of(Instruction.say(joined));
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\functions\StringFunction.java =====
+
+// src/main/java/org/trivait/minecode/engine/functions/StringFunction.java
+package org.trivait.minecode.engine.functions;
+
+import org.trivait.minecode.engine.Instruction;
+
+import java.util.List;
+
+public class StringFunction implements MineFunction {
+    @Override public String id() { return "String"; }
+    @Override public String tutorialKey() { return "minecode.api.string"; }
+    @Override public List<String> hints() { return List.of("String <name> = \"text\""); }
+
+    @Override
+    public List<Instruction> parseTokens(List<String> tokens) {
+        if (tokens.size() >= 4 && "=".equals(tokens.get(2))) {
+            String name = tokens.get(1);
+            String value = String.join(" ", tokens.subList(3, tokens.size())).trim();
+            return List.of(Instruction.declareVar("String", name, value));
+        }
+        throw new RuntimeException("Usage: String <name> = \"text\"");
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\functions\SwitchFunction.java =====
+
+// src/main/java/org/trivait/minecode/engine/functions/SwitchFunction.java
+package org.trivait.minecode.engine.functions;
+
+import org.trivait.minecode.engine.Instruction;
+
+import java.util.List;
+
+public class SwitchFunction implements MineFunction {
+    @Override public String id() { return "switch"; }
+    @Override public String tutorialKey() { return "minecode.api.switch"; }
+    @Override public List<String> hints() {
+        return List.of("switch (<expr>) { ... case <value>: ... default: ... }", "endswitch");
+    }
+
+    @Override
+    public List<Instruction> parseTokens(List<String> tokens) {
+        String head = tokens.get(0).toLowerCase();
+        switch (head) {
+            case "switch" -> {
+                String expr = String.join(" ", tokens.subList(1, tokens.size())).trim();
+                expr = stripOuterParens(expr.replace("{", "").trim());
+                return List.of(Instruction.switchExpr(expr));
+            }
+            case "case" -> {
+                String expr = String.join(" ", tokens.subList(1, tokens.size())).trim();
+                expr = stripTrailingColon(expr);
+                return List.of(Instruction.caseExpr(expr));
+            }
+            case "default" -> {
+                return List.of(Instruction.defaultCase());
+            }
+            case "endswitch" -> {
+                return List.of(Instruction.endSwitch());
+            }
+        }
+        throw new RuntimeException("Unknown switch/case/default/endswitch");
+    }
+
+    private String stripOuterParens(String s) {
+        if (s.startsWith("(") && s.endsWith(")") && s.length() >= 2) {
+            return s.substring(1, s.length()-1).trim();
+        }
+        return s;
+    }
+
+    private String stripTrailingColon(String s) {
+        s = s.trim();
+        if (s.endsWith(":")) return s.substring(0, s.length()-1).trim();
+        return s;
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\functions\WaitFunction.java =====
+
+package org.trivait.minecode.engine.functions;
+
+import org.trivait.minecode.engine.Instruction;
+
+import java.util.List;
+
+public class WaitFunction implements MineFunction {
+    @Override
+    public String id() { return "wait"; }
+
+    @Override
+    public String tutorialKey() { return "minecode.api.wait"; }
+
+    @Override
+    public List<String> hints() { return List.of("wait <ticks>"); }
+
+    @Override
+    public List<Instruction> parseTokens(List<String> tokens) {
+        if (tokens.size() != 2) throw new RuntimeException("WAIT requires ticks");
+        int t = Integer.parseInt(tokens.get(1));
+        return List.of(Instruction.waitTicks(t));
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\functions\WalkFunction.java =====
+
+package org.trivait.minecode.engine.functions;
+
+import org.trivait.minecode.engine.Instruction;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class WalkFunction implements MineFunction {
+    @Override
+    public String id() { return "walk"; }
+
+    @Override
+    public String tutorialKey() { return "minecode.api.walk"; }
+
+    @Override
+    public List<String> hints() {
+        return List.of(
+                "walk.forward <ticks>",
+                "walk.back <ticks>"
+        );
+    }
+
+    @Override
+    public List<Instruction> parseTokens(List<String> tokens) {
+        // Подфункции: walk.forward, walk.back
+        if (tokens.isEmpty()) throw new RuntimeException("WALK requires subcommand");
+        String head = tokens.get(0).toLowerCase();
+
+        List<Instruction> res = new ArrayList<>();
+        if (head.equals("walk.forward")) {
+            if (tokens.size() != 2) throw new RuntimeException("walk.forward <ticks>");
+            int steps = Integer.parseInt(tokens.get(1));
+            // Положительное движение вперёд
+            res.add(Instruction.walkForward(steps));
+        } else if (head.equals("walk.back")) {
+            if (tokens.size() != 2) throw new RuntimeException("walk.back <ticks>");
+            int steps = Integer.parseInt(tokens.get(1));
+            // Отрицательное движение назад — закодируем как отрицательные тики
+            res.add(Instruction.walkForward(-steps));
+        } else {
+            throw new RuntimeException("Unknown walk subcommand: " + head);
+        }
+        return res;
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\engine\functions\WhileFunction.java =====
+
+// src/main/java/org/trivait/minecode/engine/functions/WhileFunction.java
+package org.trivait.minecode.engine.functions;
+
+import org.trivait.minecode.engine.Instruction;
+
+import java.util.List;
+
+public class WhileFunction implements MineFunction {
+    @Override public String id() { return "while"; }
+    @Override public String tutorialKey() { return "minecode.api.while"; }
+    @Override public List<String> hints() { return List.of("while (<condition>) { ... }", "endwhile"); }
+
+    @Override
+    public List<Instruction> parseTokens(List<String> tokens) {
+        String head = tokens.get(0).toLowerCase();
+        if (head.equals("while")) {
+            String cond = String.join(" ", tokens.subList(1, tokens.size())).trim();
+            cond = stripOuterParens(cond.replace("{", "").trim());
+            return List.of(Instruction.whileLoop(cond));
+        } else if (head.equals("endwhile")) {
+            return List.of(Instruction.endWhile());
+        }
+        throw new RuntimeException("Unknown while/endwhile");
+    }
+
+    private String stripOuterParens(String s) {
+        if (s.startsWith("(") && s.endsWith(")") && s.length() >= 2) {
+            return s.substring(1, s.length()-1).trim();
+        }
+        return s;
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\ui\APIScreen.java =====
+
+// src/main/java/org/trivait/minecode/ui/APIScreen.java
+package org.trivait.minecode.ui;
+
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.text.Text;
+import org.trivait.minecode.engine.functions.FunctionRegistry;
+import org.trivait.minecode.engine.functions.MineFunction;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class APIScreen extends Screen {
+    private final Screen back;
+    private float anim; // анимация появления
+    private int scroll; // вертикальная прокрутка
+    private List<MineFunction> functions;
+
+    private static final int COLOR_PANEL = 0x66000000;
+    private static final int COLOR_BORDER = 0xFFAA33; // оранжевая рамка
+    private static final int COLOR_TITLE = 0xFFAA33;  // заголовок панели
+    private static final int COLOR_DESC = 0xCCCCCC;   // описание
+    private static final int COLOR_SIG = 0x33CCCC;    // сигнатуры — бирюзовый
+
+    public APIScreen(Screen back) {
+        super(Text.translatable("minecode.screen.api"));
+        this.back = back;
+    }
+
+    @Override
+    protected void init() {
+        anim = 0f;
+        functions = new ArrayList<>(FunctionRegistry.all());
+
+        // Центрируем кнопку "Назад" сверху
+        int bw = 100, bh = 20;
+        addDrawableChild(ButtonWidget.builder(
+                Text.translatable("minecode.button.back"),
+                b -> this.client.setScreen(back)
+        ).dimensions((this.width/2 - bw/2) + 400, 10, bw, bh).build());
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        scroll -= (int)(verticalAmount * 20);
+        scroll = Math.max(0, scroll);
+        return true;
+    }
+
+    @Override
+    public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        super.render(ctx, mouseX, mouseY, delta); // super в начале
+
+        anim = Math.min(anim + delta * 0.06f, 1f);
+
+        int w = width;
+        int x = w/2 - 220;
+        int y = 40 - scroll;
+
+        // Заголовок экрана
+        String title = Text.translatable("minecode.screen.api").getString();
+        int tw = textRenderer.getWidth(title);
+        // Панели функций
+        for (MineFunction fn : functions) {
+            int ph = 60 + fn.hints().size() * 14;
+            int alpha = (int)(0x66 * anim) & 0xFF;
+            int panelBg = (alpha << 24) | (COLOR_PANEL & 0x00FFFFFF);
+
+            ctx.fill(x, y, x+440, y+ph, panelBg);
+            drawBorder(ctx, x, y, 440, ph, COLOR_BORDER);
+
+            // Заголовок и описание
+            ctx.drawText(textRenderer, fn.id(), x+10, y+8, COLOR_TITLE, false);
+            ctx.drawText(textRenderer, Text.translatable(fn.tutorialKey()), x+10, y+26, COLOR_DESC, false);
+
+            // Сигнатуры/подсказки
+            int yy = y + 44;
+            for (String sig : fn.hints()) {
+                ctx.drawText(textRenderer, "• " + sig, x+16, yy, COLOR_SIG, false);
+                yy += 14;
+            }
+
+            y += ph + 12;
+            ctx.drawText(textRenderer, title, w/2 - tw/2, 20, 0xFFFFFF | ((int)(anim*255) << 24), false);
+        }
+    }
+
+    private void drawBorder(DrawContext ctx, int x, int y, int w, int h, int col) {
+        ctx.fill(x, y, x+w, y+1, col);
+        ctx.fill(x, y+h-1, x+w, y+h, col);
+        ctx.fill(x, y, x+1, y+h, col);
+        ctx.fill(x+w-1, y, x+w, y+h, col);
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\ui\EditorScreen.java =====
+
+// src/main/java/org/trivait/minecode/ui/EditorScreen.java
+package org.trivait.minecode.ui;
+
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.text.Text;
+import org.lwjgl.glfw.GLFW;
+import org.trivait.minecode.engine.ScriptManager;
+import org.trivait.minecode.ui.widget.CodeTextArea;
+import org.trivait.minecode.util.PathsUtil;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+public class EditorScreen extends Screen {
+    private final Path scriptPathOrNull;
+    private TextFieldWidget nameField;
+    private CodeTextArea code;
+    private float anim;
+
+    public EditorScreen(Path scriptPathOrNull) {
+        super(Text.translatable("minecode.screen.editor"));
+        this.scriptPathOrNull = scriptPathOrNull;
+    }
+
+    @Override
+    protected void init() {
+        anim = 0f;
+        int w = width;
+        int h = height;
+
+        nameField = new TextFieldWidget(textRenderer, w/2 - 200, 30, 200, 20, Text.literal(""));
+        nameField.setPlaceholder(Text.translatable("minecode.placeholder.scriptname"));
+        if (scriptPathOrNull != null) {
+            String base = scriptPathOrNull.getFileName().toString();
+            if (base.endsWith(".mc")) base = base.substring(0, base.length()-3);
+            nameField.setText(base);
+        }
+        addSelectableChild(nameField);
+
+        code = new CodeTextArea(textRenderer, w/2 - 200, 60, 400, h - 130);
+        code.setHintsProvider(ScriptManager::hintFor);
+        if (scriptPathOrNull != null) {
+            try {
+                String content = Files.readString(scriptPathOrNull);
+                code.setText(content);
+            } catch (IOException e) {
+                MinecraftClient.getInstance().inGameHud.setOverlayMessage(Text.literal("Ошибка чтения: " + e.getMessage()), false);
+            }
+        } else {
+            code.setText("""
+                # MineCode example
+                say "Hello, World!"
+                wait 20
+                say "Bye, World!"
+                """);
+        }
+        addSelectableChild(code);
+
+        // Центрируем кнопки
+        int bw = 90, bh = 20, gap = 10;
+        int total = bw*5 + gap*4;
+        int bx = w/2 - total/2;
+        int by = h - 60;
+
+        addDrawableChild(ButtonWidget.builder(Text.translatable("minecode.button.save"), btn -> save())
+                .dimensions(bx, by, bw, bh).build());
+        addDrawableChild(ButtonWidget.builder(Text.translatable("minecode.button.run"), btn -> {
+            save();
+            ScriptManager.select(PathsUtil.resolveScript(nameField.getText()));
+            ScriptManager.runSelected(MinecraftClient.getInstance());
+        }).dimensions(bx + (bw+gap)*1, by, bw, bh).build());
+        addDrawableChild(ButtonWidget.builder(Text.translatable("minecode.button.stop"), btn -> {
+            ScriptManager.stopRunning();
+        }).dimensions(bx + (bw+gap)*2, by, bw, bh).build());
+        addDrawableChild(ButtonWidget.builder(Text.translatable("minecode.button.api"), btn -> {
+            this.client.setScreen(new APIScreen(this));
+        }).dimensions(bx + (bw+gap)*3, by, bw, bh).build());
+        addDrawableChild(ButtonWidget.builder(Text.translatable("minecode.button.back"), btn -> {
+            this.client.setScreen(new ManagerScreen());
+        }).dimensions(bx + (bw+gap)*4, by, bw, bh).build());
+    }
+
+    private void save() {
+        String nm = nameField.getText().trim();
+        if (nm.isEmpty()) {
+            MinecraftClient.getInstance().inGameHud.setOverlayMessage(Text.literal("Имя пустое"), false);
+            return;
+        }
+        Path p = PathsUtil.resolveScript(nm);
+        try {
+            Files.createDirectories(p.getParent());
+            Files.writeString(p, code.getText(), StandardCharsets.UTF_8);
+            MinecraftClient.getInstance().inGameHud.setOverlayMessage(Text.translatable("minecode.toast.saved"), false);
+        } catch (IOException e) {
+            MinecraftClient.getInstance().inGameHud.setOverlayMessage(Text.literal("Ошибка сохранения: " + e.getMessage()), false);
+        }
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if ((modifiers & GLFW.GLFW_MOD_CONTROL) != 0 && keyCode == GLFW.GLFW_KEY_S) {
+            save();
+            return true;
+        }
+        if ((modifiers & GLFW.GLFW_MOD_CONTROL) != 0 && keyCode == GLFW.GLFW_KEY_R) {
+            save();
+            ScriptManager.select(PathsUtil.resolveScript(nameField.getText()));
+            ScriptManager.runSelected(MinecraftClient.getInstance());
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        super.render(ctx, mouseX, mouseY, delta);
+        anim = Math.min(anim + delta * 0.05f, 1f);
+        drawHeader(ctx);
+        nameField.render(ctx, mouseX, mouseY, delta);
+        code.render(ctx, mouseX, mouseY, delta);
+    }
+
+    private void drawHeader(DrawContext ctx) {
+        int w = width;
+        int base = 0x44000000;
+        ctx.fill(0, 0, w, 50, base);
+        String t = Text.translatable("minecode.screen.editor").getString();
+        int tw = textRenderer.getWidth(t);
+        int x = w/2 - tw/2;
+        int col = 0xFFFFFF | ((int)(anim*255) << 24);
+        ctx.drawText(textRenderer, t, x, 16, col, false);
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\ui\ManagerScreen.java =====
+
+// src/main/java/org/trivait/minecode/ui/ManagerScreen.java
+package org.trivait.minecode.ui;
+
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.text.Text;
+import org.lwjgl.glfw.GLFW;
+import org.trivait.minecode.engine.ScriptManager;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+
+import static org.trivait.minecode.util.PathsUtil.getScriptsDir;
+
+public class ManagerScreen extends Screen {
+    private List<Path> scripts;
+    private Path selected;
+    private TextFieldWidget search;
+    private float anim;
+
+    public ManagerScreen() {
+        super(Text.translatable("minecode.screen.manager"));
+    }
+
+    @Override
+    protected void init() {
+        anim = 0f;
+        reloadScripts("");
+
+        int w = this.width;
+        int h = this.height;
+
+        search = new TextFieldWidget(this.textRenderer, w/2 - 180, 30, 360, 20, Text.literal(""));
+        search.setPlaceholder(Text.translatable("minecode.placeholder.search"));
+        search.setChangedListener(this::reloadScripts);
+        addSelectableChild(search);
+
+        int bw = 90, bh = 20, gap = 10;
+        int total = bw*4 + gap*3;
+        int bx = w/2 - total/2;
+        int by = h - 60;
+
+        addDrawableChild(ButtonWidget.builder(Text.translatable("minecode.button.new"), btn -> {
+            this.client.setScreen(new EditorScreen(null));
+        }).dimensions(bx, by, bw, bh).build());
+
+        addDrawableChild(ButtonWidget.builder(Text.translatable("minecode.button.api"), btn -> {
+            this.client.setScreen(new APIScreen(this));
+        }).dimensions(bx + (bw+gap)*1, by, bw, bh).build());
+
+        addDrawableChild(ButtonWidget.builder(Text.translatable("minecode.button.run"), btn -> {
+            ScriptManager.select(selected);
+            ScriptManager.runSelected(client);
+        }).dimensions(bx + (bw+gap)*2, by, bw, bh).build());
+
+        addDrawableChild(ButtonWidget.builder(Text.translatable("minecode.button.stop"), btn -> {
+            ScriptManager.stopRunning();
+        }).dimensions(bx + (bw+gap)*3, by, bw, bh).build());
+    }
+
+    private void reloadScripts(String query) {
+        try {
+            scripts = Files.list(getScriptsDir())
+                    .filter(p -> p.getFileName().toString().endsWith(".mc"))
+                    .filter(p -> query == null || query.isEmpty() ||
+                            p.getFileName().toString().toLowerCase().contains(query.toLowerCase()))
+                    .sorted()
+                    .toList();
+            if (selected == null && !scripts.isEmpty()) selected = scripts.get(0);
+        } catch (IOException e) {
+            this.client.inGameHud.setOverlayMessage(Text.literal("Ошибка списка: " + e.getMessage()), false);
+        }
+    }
+
+    @Override
+    public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        super.render(ctx, mouseX, mouseY, delta); // super в начале
+        anim = Math.min(anim + delta * 0.05f, 1f);
+
+        int w = this.width;
+        int h = this.height;
+        drawTitle(ctx, w, h);
+        search.render(ctx, mouseX, mouseY, delta);
+
+        int listTop = 60;
+        int itemHeight = 24;
+        int visible = (h - listTop - 80)/itemHeight;
+
+        int slide = (int)((1f - anim) * 20); // лёгкий слайд сверху вниз
+
+        for (int i=0; i<Math.min(visible, scripts.size()); i++) {
+            Path p = scripts.get(i);
+            int y = listTop + i*itemHeight + slide;
+            boolean sel = p.equals(selected);
+            int alpha = sel ? 180 : 100;
+            int bg = (alpha << 24) | (sel ? 0x66BFFF : 0x333333); // мягкий голубой для выделения
+            ctx.fill(w/2 - 200, y, w/2 + 200, y + itemHeight - 2, bg);
+            String name = p.getFileName().toString();
+            ctx.drawText(this.textRenderer, name, w/2 - 190, y + 6, 0xFFFFFF, false);
+
+            if (isMouseOverItem(mouseX, mouseY, w/2 - 200, y, 400, itemHeight - 2)) {
+                String hint = sel ? "Enter: edit / F6: run" : "Click: select";
+                ctx.drawText(this.textRenderer, hint, w/2 + 200 - 160, y + 6, 0xCCCCCC, false);
+            }
+        }
+    }
+
+    private void drawTitle(DrawContext ctx, int w, int h) {
+        int base = 0x55000000;
+        ctx.fill(0, 0, w, 50, base);
+        String t = Text.translatable("minecode.title").getString();
+        int tw = textRenderer.getWidth(t);
+        int x = (int) (w/2 - tw/2);
+        int y = 16;
+        int col = 0xFFFFFF | ((int)(anim*255) << 24);
+        ctx.drawText(textRenderer, t, x, y, col, false);
+    }
+
+    private boolean isMouseOverItem(int mx, int my, int x, int y, int w, int h) {
+        return mx >= x && mx <= x + w && my >= y && my <= y + h;
+    }
+
+    @Override
+    public boolean mouseClicked(double mx, double my, int button) {
+        int w = this.width;
+        int listTop = 60;
+        int itemHeight = 24;
+        for (int i=0; i<scripts.size(); i++) {
+            int y = listTop + i*itemHeight;
+            if (isMouseOverItem((int)mx, (int)my, w/2 - 200, y, 400, itemHeight - 2)) {
+                selected = scripts.get(i);
+                if (button == 1) { // ПКМ открывает редактор
+                    this.client.setScreen(new EditorScreen(selected));
+                }
+                return true;
+            }
+        }
+        return super.mouseClicked(mx, my, button);
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == GLFW.GLFW_KEY_ENTER && selected != null) {
+            this.client.setScreen(new EditorScreen(selected));
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\ui\style\UIStyle.java =====
+
+package org.trivait.minecode.ui.style;
+
+import net.minecraft.client.gui.DrawContext;
+
+public class UIStyle {
+    public static void drawPanel(DrawContext ctx, int x, int y, int w, int h) {
+        int bg = 0x33000000;
+        ctx.fill(x, y, x+w, y+h, bg);
+        int border = 0x2200D0FF;
+        ctx.fill(x, y, x+w, y+1, border);
+        ctx.fill(x, y+h-1, x+w, y+h, border);
+        ctx.fill(x, y, x+1, y+h, border);
+        ctx.fill(x+w-1, y, x+w, y+h, border);
+    }
+
+    public static void drawGradient(DrawContext ctx, int x, int y, int w, int h, int c1, int c2) {
+        ctx.fillGradient(x, y, x+w, y+h, c1, c2);
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\ui\widget\CodeTextArea.java =====
+
+// src/main/java/org/trivait/minecode/ui/widget/CodeTextArea.java
+package org.trivait.minecode.ui.widget;
+
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.narration.NarrationMessageBuilder;
+import net.minecraft.client.gui.widget.ClickableWidget;
+import net.minecraft.client.font.TextRenderer;
+import net.minecraft.text.Text;
+import org.lwjgl.glfw.GLFW;
+import org.trivait.minecode.engine.Parser;
+
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public class CodeTextArea extends ClickableWidget {
+    private final TextRenderer tr;
+    private String text = "";
+    private int caretLine = 0;
+    private int caretCol = 0;
+    private int scroll = 0;
+    private boolean focused;
+
+    private java.util.function.Function<String, List<String>> hintsProvider;
+    private List<String> hints = new ArrayList<>();
+    private int hintIndex = -1;
+
+    // Undo/Redo
+    private final Deque<State> undoStack = new ArrayDeque<>();
+    private final Deque<State> redoStack = new ArrayDeque<>();
+    private static final int MAX_HISTORY = 100;
+
+    // Ошибки
+    private final Map<Integer, String> errors = new HashMap<>();
+
+    // Выделение текста
+    private boolean selecting = false;
+    private int selStartLine = -1, selStartCol = -1;
+    private int selEndLine = -1, selEndCol = -1;
+
+    // Цвета
+    private static final int COLOR_BG = 0x88000000;
+    private static final int COLOR_TEXT = 0xFFFFFF;
+    private static final int COLOR_COMMENT = 0x888888;
+    private static final int COLOR_FUNC = 0xFFAA33;
+    private static final int COLOR_VAR = 0x33CCCC;
+    private static final int COLOR_BUILTIN = 0x55DD55;
+    private static final int COLOR_VALUE = 0x00FFFF;
+    private static final int COLOR_LINE_NUM = 0xAAAAAA;
+    private static final int COLOR_ERROR = 0xFF4444;
+    private static final int COLOR_CARET = 0xCC66BFFF;
+    private static final int COLOR_SELECTION = 0x553399FF;
+
+    public CodeTextArea(TextRenderer tr, int x, int y, int w, int h) {
+        super(x, y, w, h, Text.empty());
+        this.tr = tr;
+        pushUndo();
+    }
+
+    public void setText(String t) {
+        this.text = t == null ? "" : t.replace("\r\n", "\n");
+        clampCaret();
+        refreshHints();
+        analyzeErrors();
+    }
+
+    public String getText() {
+        return text;
+    }
+
+    public void setHintsProvider(java.util.function.Function<String, List<String>> hintsProvider) {
+        this.hintsProvider = hintsProvider;
+        refreshHints();
+    }
+
+    private List<String> lines() {
+        return new ArrayList<>(Arrays.asList(text.split("\n", -1)));
+    }
+
+    private void setLines(List<String> ls) {
+        this.text = String.join("\n", ls);
+        refreshHints();
+        analyzeErrors();
+    }
+
+    private void analyzeErrors() {
+        errors.clear();
+        String full = this.text;
+        if (full.trim().isEmpty()) return;
+        try {
+            Parser.parse(full);
+        } catch (Exception e) {
+            String msg = e.getMessage() != null ? e.getMessage() : "Unknown error";
+            // Попробуем извлечь номер строки из "Error at line X:"
+            int lineIdx = 0;
+            Matcher m = Pattern.compile("line\\s+(\\d+)").matcher(msg.toLowerCase(Locale.ROOT));
+            if (m.find()) {
+                try {
+                    int ln1 = Integer.parseInt(m.group(1)); // 1-based
+                    lineIdx = Math.max(0, ln1 - 1);         // в errors — 0-based
+                } catch (Exception ignore) {}
+            }
+            errors.put(lineIdx, msg);
+        }
+    }
+
+
+    @Override
+    public void renderWidget(DrawContext ctx, int mx, int my, float delta) {
+        ctx.fill(getX(), getY(), getX()+width, getY()+height, COLOR_BG);
+
+        List<String> ls = lines();
+        int lineHeight = tr.fontHeight + 2;
+        int visible = height / lineHeight;
+
+        for (int i=0; i<visible && i+scroll < ls.size(); i++) {
+            int lineNum = i+scroll;
+            String s = ls.get(lineNum);
+            int y = getY() + 4 + i*lineHeight;
+
+            // Подсветка выделения
+            if (selecting && selStartLine >= 0 && selEndLine >= 0) {
+                int startLine = Math.min(selStartLine, selEndLine);
+                int endLine = Math.max(selStartLine, selEndLine);
+                int startCol = (selStartLine < selEndLine) ? selStartCol : selEndCol;
+                int endCol = (selStartLine < selEndLine) ? selEndCol : selStartCol;
+
+                for (int ln = startLine; ln <= endLine; ln++) {
+                    if (ln < scroll || ln >= scroll + visible) continue;
+                    String line = ls.get(ln);
+                    int yy = getY() + 4 + (ln - scroll) * lineHeight;
+                    int x0 = getX() + 40;
+                    int from = (ln == startLine ? startCol : 0);
+                    int to = (ln == endLine ? endCol : line.length());
+                    from = Math.max(0, Math.min(from, line.length()));
+                    to = Math.max(0, Math.min(to, line.length()));
+                    int xStart = x0 + tr.getWidth(line.substring(0, from));
+                    int xEnd = x0 + tr.getWidth(line.substring(0, to));
+                    if (xEnd > xStart) {
+                        ctx.fill(xStart, yy, xEnd, yy + tr.fontHeight, COLOR_SELECTION);
+                    }
+                }
+            }
+
+            // Номер строки
+            ctx.drawText(tr, String.valueOf(lineNum+1), getX()+2, y, COLOR_LINE_NUM, false);
+
+            // Подсветка ошибок
+            boolean hasError = errors.containsKey(lineNum);
+            int base = hasError ? COLOR_ERROR : COLOR_TEXT;
+            if (s.trim().startsWith("#")) base = COLOR_COMMENT;
+
+            drawColoredLine(ctx, s, getX()+40, y, base);
+
+            // Каретка
+            if (focused && lineNum == caretLine) {
+                int cx = getX()+40 + tr.getWidth(s.substring(0, Math.min(caretCol, s.length())));
+                ctx.fill(cx, y, cx+1, y + tr.fontHeight, COLOR_CARET);
+            }
+
+            // Тултип ошибки
+            if (hasError && mx >= getX() && mx <= getX()+width && my >= y && my <= y+lineHeight) {
+                ctx.drawTooltip(tr, Text.literal(errors.get(lineNum)), mx, my);
+            }
+        }
+
+        // Подсказки снизу (макс 7)
+        if (focused && hints != null && !hints.isEmpty()) {
+            int showCount = Math.min(7, hints.size());
+            int bx = getX() + 8;
+            int by = getY() + height - 8 - showCount * lineHeight;
+            ctx.fill(bx-6, by-6, bx + 240, by + showCount*lineHeight + 6, 0xAA222222);
+            for (int i=0; i<showCount; i++) {
+                String h = hints.get(i);
+                int col = (i == hintIndex) ? COLOR_FUNC : COLOR_TEXT;
+                ctx.drawText(tr, h, bx, by + i*lineHeight, col, false);
+            }
+        }
+
+        // Счётчик ошибок
+        String errText = "Errors: " + errors.size();
+        int tw = tr.getWidth(errText);
+        ctx.drawText(tr, errText, getX()+width - tw - 6, getY()+4, errors.isEmpty() ? COLOR_BUILTIN : COLOR_ERROR, false);
+    }
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        int lineHeight = tr.fontHeight + 2;
+        int totalLines = lines().size();
+        int visible = height / lineHeight;
+        int maxScroll = Math.max(0, totalLines - visible);
+        scroll -= (int)verticalAmount;
+        if (scroll < 0) scroll = 0;
+        if (scroll > maxScroll) scroll = maxScroll;
+        return true;
+    }
+
+    @Override
+    public boolean mouseClicked(double mx, double my, int button) {
+        if (mx >= getX() && mx <= getX()+width && my >= getY() && my <= getY()+height) {
+            focused = true;
+            int lineHeight = tr.fontHeight + 2;
+            int idx = (int)((my - getY() - 4) / lineHeight);
+            List<String> ls = lines();
+            caretLine = Math.max(0, Math.min(ls.size()-1, idx + scroll));
+            String s = ls.get(caretLine);
+            int relx = (int)(mx - getX() - 40);
+            if (relx < 0) relx = 0;
+            int c = 0;
+            while (c < s.length() && tr.getWidth(s.substring(0, c)) < relx) c++;
+            caretCol = c;
+
+            // начало выделения
+            selecting = true;
+            selStartLine = caretLine;
+            selStartCol = caretCol;
+            selEndLine = caretLine;
+            selEndCol = caretCol;
+            return true;
+        }
+        focused = false;
+        return false;
+    }
+
+    private void drawColoredLine(DrawContext ctx, String s, int x, int y, int base) {
+        String[] tokens = s.split(" ");
+        int curX = x;
+        for (String t : tokens) {
+            int col = base;
+            String up = t.toUpperCase();
+
+            // значения в кавычках или числа
+            if (isQuoted(t) || isNumber(t)) {
+                col = COLOR_VALUE;
+            }
+            // переменные
+            else if (t.startsWith("$")) {
+                col = COLOR_VAR;
+            }
+            // встроенные конструкции
+            else if (up.equals("IF") || up.equals("BLOCK") || up.equals("LOOP")) {
+                col = COLOR_BUILTIN;
+            }
+            // функции
+            else if (up.equals("SAY") || up.equals("WAIT") || up.equals("LOOK") || up.startsWith("WALK")) {
+                col = COLOR_FUNC;
+            }
+
+            ctx.drawText(tr, t + " ", curX, y, col, false);
+            curX += tr.getWidth(t + " ");
+        }
+    }
+
+    private boolean hasSelection() {
+        return selecting && selStartLine >= 0 && selEndLine >= 0 &&
+                (selStartLine != selEndLine || selStartCol != selEndCol);
+    }
+
+    private void clearSelection() {
+        selecting = false;
+        selStartLine = selEndLine = -1;
+        selStartCol = selEndCol = -1;
+    }
+
+    /** Удаляет выделенный диапазон (многострочный, с безопасными индексами) и ставит каретку на начало диапазона */
+    private void deleteSelection() {
+        List<String> ls = lines();
+        if (ls.isEmpty()) { clearSelection(); return; }
+
+        int startLine = Math.min(selStartLine, selEndLine);
+        int endLine = Math.max(selStartLine, selEndLine);
+        int startCol = (selStartLine < selEndLine) ? selStartCol : selEndCol;
+        int endCol   = (selStartLine < selEndLine) ? selEndCol   : selStartCol;
+
+        String lineStart = ls.get(startLine);
+        String lineEnd   = ls.get(endLine);
+
+        int safeStartCol = Math.max(0, Math.min(startCol, lineStart.length()));
+        int safeEndCol   = Math.max(0, Math.min(endCol,   lineEnd.length()));
+
+        String first = lineStart.substring(0, safeStartCol);
+        String last  = lineEnd.substring(safeEndCol);
+
+        List<String> newLs = new ArrayList<>();
+        for (int i = 0; i < startLine; i++) newLs.add(ls.get(i));
+        newLs.add(first + last);
+        for (int i = endLine + 1; i < ls.size(); i++) newLs.add(ls.get(i));
+
+        caretLine = startLine;
+        caretCol  = first.length();
+        setLines(newLs);
+        clearSelection();
+    }
+
+
+    // Проверка: строка в кавычках
+    private boolean isQuoted(String t) {
+        return t.length() >= 2 && t.startsWith("\"") && t.endsWith("\"");
+    }
+
+    // Проверка: число (целое или с плавающей точкой)
+    private boolean isNumber(String t) {
+        if (t == null || t.isEmpty()) return false;
+        try {
+            Double.parseDouble(t);
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+
+
+    @Override
+    public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+        if (!selecting) return false;
+        int lineHeight = tr.fontHeight + 2;
+        int idx = (int)((my - getY() - 4) / lineHeight);
+        List<String> ls = lines();
+        selEndLine = Math.max(0, Math.min(ls.size()-1, idx + scroll));
+        String s = ls.get(selEndLine);
+        int relx = (int)(mx - getX() - 40);
+        if (relx < 0) relx = 0;
+        int c = 0;
+        while (c < s.length() && tr.getWidth(s.substring(0, c)) < relx) c++;
+        selEndCol = c;
+        caretLine = selEndLine;
+        caretCol = selEndCol;
+        return true;
+    }
+
+    @Override
+    protected void appendClickableNarrations(NarrationMessageBuilder builder) {}
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (!focused) return false;
+        List<String> ls = lines();
+        String cur = ls.isEmpty() ? "" : ls.get(caretLine);
+
+        boolean ctrl = (modifiers & GLFW.GLFW_MOD_CONTROL) != 0;
+
+        // Undo/Redo
+        if (ctrl && keyCode == GLFW.GLFW_KEY_Z) { undo(); return true; }
+        if (ctrl && keyCode == GLFW.GLFW_KEY_Y) { redo(); return true; }
+
+        // Выделить всё
+        if (ctrl && keyCode == GLFW.GLFW_KEY_A) {
+            selStartLine = 0;
+            selStartCol = 0;
+            selEndLine = ls.size() - 1;
+            selEndCol = ls.get(selEndLine).length();
+            caretLine = selEndLine;
+            caretCol = selEndCol;
+            selecting = true;
+            int lineHeight = tr.fontHeight + 2;
+            int visible = height / lineHeight;
+            scroll = Math.max(0, ls.size() - visible);
+            return true;
+        }
+
+        // Копирование
+        if (ctrl && keyCode == GLFW.GLFW_KEY_C) {
+            if (selStartLine >= 0 && selEndLine >= 0) {
+                int startLine = Math.min(selStartLine, selEndLine);
+                int endLine = Math.max(selStartLine, selEndLine);
+                int startCol = (selStartLine < selEndLine) ? selStartCol : selEndCol;
+                int endCol = (selStartLine < selEndLine) ? selEndCol : selStartCol;
+
+                StringBuilder sb = new StringBuilder();
+                for (int i = startLine; i <= endLine; i++) {
+                    String line = ls.get(i);
+                    int from = (i == startLine ? startCol : 0);
+                    int to = (i == endLine ? endCol : line.length());
+                    from = Math.max(0, Math.min(from, line.length()));
+                    to = Math.max(0, Math.min(to, line.length()));
+                    if (from < to) sb.append(line, from, to);
+                    if (i < endLine) sb.append("\n");
+                }
+                MinecraftClient.getInstance().keyboard.setClipboard(sb.toString());
+            } else {
+                MinecraftClient.getInstance().keyboard.setClipboard(text);
+            }
+            return true;
+        }
+
+        // Вырезание
+        if (ctrl && keyCode == GLFW.GLFW_KEY_X) {
+            if (selStartLine >= 0 && selEndLine >= 0) {
+                pushUndo();
+                int startLine = Math.min(selStartLine, selEndLine);
+                int endLine = Math.max(selStartLine, selEndLine);
+                int startCol = (selStartLine < selEndLine) ? selStartCol : selEndCol;
+                int endCol = (selStartLine < selEndLine) ? selEndCol : selStartCol;
+
+                // Сохраняем в буфер
+                StringBuilder sb = new StringBuilder();
+                for (int i = startLine; i <= endLine; i++) {
+                    String line = ls.get(i);
+                    int from = (i == startLine ? startCol : 0);
+                    int to = (i == endLine ? endCol : line.length());
+                    from = Math.max(0, Math.min(from, line.length()));
+                    to = Math.max(0, Math.min(to, line.length()));
+                    if (from < to) sb.append(line, from, to);
+                    if (i < endLine) sb.append("\n");
+                }
+                MinecraftClient.getInstance().keyboard.setClipboard(sb.toString());
+
+                // Удаляем выделенный диапазон
+                String lineStart = ls.get(startLine);
+                String lineEnd = ls.get(endLine);
+
+                int safeStartCol = Math.max(0, Math.min(startCol, lineStart.length()));
+                int safeEndCol = Math.max(0, Math.min(endCol, lineEnd.length()));
+
+                String first = lineStart.substring(0, safeStartCol);
+                String last = lineEnd.substring(safeEndCol);
+                List<String> newLs = new ArrayList<>();
+                for (int i = 0; i < startLine; i++) newLs.add(ls.get(i));
+                newLs.add(first + last);
+                for (int i = endLine+1; i < ls.size(); i++) newLs.add(ls.get(i));
+
+                caretLine = startLine;
+                caretCol = first.length();
+                setLines(newLs);
+
+                // сброс выделения
+                selecting = false;
+                selStartLine = selEndLine = -1;
+                selStartCol = selEndCol = -1;
+                return true;
+            } else {
+                MinecraftClient.getInstance().keyboard.setClipboard(text);
+                pushUndo();
+                setText("");
+                caretLine = 0; caretCol = 0; scroll = 0;
+                return true;
+            }
+        }
+
+        // Вставка
+        if (ctrl && keyCode == GLFW.GLFW_KEY_V) {
+            String clip = MinecraftClient.getInstance().keyboard.getClipboard();
+            if (clip != null && !clip.isEmpty()) {
+                pushUndo();
+                insertText(clip);
+            }
+            return true;
+        }
+        // Стрелки и редактирование
+        switch (keyCode) {
+            case GLFW.GLFW_KEY_LEFT -> { caretCol = Math.max(0, caretCol - 1); return true; }
+            case GLFW.GLFW_KEY_RIGHT -> { caretCol = Math.min(cur.length(), caretCol + 1); return true; }
+            case GLFW.GLFW_KEY_UP -> { moveUp(); return true; }
+            case GLFW.GLFW_KEY_DOWN -> { moveDown(); return true; }
+            case GLFW.GLFW_KEY_BACKSPACE -> {
+                pushUndo();
+                if (hasSelection()) {
+                    deleteSelection();
+                } else {
+                    backspace();
+                }
+                return true;
+            }
+            case GLFW.GLFW_KEY_DELETE -> { pushUndo(); delete(); return true; }
+            case GLFW.GLFW_KEY_ENTER -> { pushUndo(); splitLine(); return true; }
+            case GLFW.GLFW_KEY_TAB -> {
+                if (!hints.isEmpty()) {
+                    pushUndo();
+                    String replacement = hints.get(0);
+                    replaceCurrentToken(replacement);
+                } else {
+                    pushUndo();
+                    insertText("    ");
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void replaceCurrentToken(String replacement) {
+        List<String> ls = lines();
+        String cur = ls.get(caretLine);
+        int start = caretCol;
+        while (start > 0 && !Character.isWhitespace(cur.charAt(start-1))) start--;
+        int end = caretCol;
+        while (end < cur.length() && !Character.isWhitespace(cur.charAt(end))) end++;
+        String newLine = cur.substring(0, start) + replacement + cur.substring(end);
+        ls.set(caretLine, newLine);
+        caretCol = start + replacement.length();
+        setLines(ls);
+    }
+
+    @Override
+    public boolean charTyped(char chr, int modifiers) {
+        if (!focused) return false;
+        if (chr == '\r' || chr == '\n') return false;
+        pushUndo();
+        insertText(String.valueOf(chr));
+        return true;
+    }
+
+    private void moveUp() {
+        List<String> ls = lines();
+        if (caretLine > 0) {
+            caretLine--;
+            caretCol = Math.min(caretCol, ls.get(caretLine).length());
+            scroll = Math.max(0, Math.min(scroll, caretLine));
+        }
+    }
+
+    private void moveDown() {
+        List<String> ls = lines();
+        if (caretLine < ls.size()-1) {
+            caretLine++;
+            caretCol = Math.min(caretCol, ls.get(caretLine).length());
+            int lineHeight = tr.fontHeight + 2;
+            int visible = height / lineHeight;
+            if (caretLine - scroll >= visible) {
+                scroll = Math.min(scroll + 1, Math.max(0, ls.size() - visible));
+            }
+        }
+    }
+
+    private void backspace() {
+        List<String> ls = lines();
+        if (ls.isEmpty()) return;
+        if (caretCol > 0) {
+            String cur = ls.get(caretLine);
+            int safeCol = Math.min(caretCol, cur.length());
+            String newLine = cur.substring(0, safeCol-1) + cur.substring(safeCol);
+            ls.set(caretLine, newLine);
+            caretCol--;
+            setLines(ls);
+        } else if (caretLine > 0) {
+            String prev = ls.get(caretLine-1);
+            String cur = ls.get(caretLine);
+            int prevLen = prev.length();
+            ls.set(caretLine-1, prev + cur);
+            ls.remove(caretLine);
+            caretLine--;
+            caretCol = prevLen;
+            setLines(ls);
+        }
+    }
+
+    private void delete() {
+        List<String> ls = lines();
+        if (ls.isEmpty()) return;
+        String cur = ls.get(caretLine);
+        if (caretCol < cur.length()) {
+            String newLine = cur.substring(0, caretCol) + cur.substring(caretCol+1);
+            ls.set(caretLine, newLine);
+            setLines(ls);
+        } else if (caretLine < ls.size()-1) {
+            String next = ls.get(caretLine+1);
+            ls.set(caretLine, cur + next);
+            ls.remove(caretLine+1);
+            setLines(ls);
+        }
+    }
+
+    private void splitLine() {
+        List<String> ls = lines();
+        String cur = ls.get(caretLine);
+        int safeCol = Math.min(caretCol, cur.length());
+        String left = cur.substring(0, safeCol);
+        String right = cur.substring(safeCol);
+        ls.set(caretLine, left);
+        ls.add(caretLine+1, right);
+        caretLine++;
+        caretCol = 0;
+        setLines(ls);
+    }
+
+    private void insertText(String s) {
+        List<String> ls = lines();
+        if (ls.isEmpty()) ls = new ArrayList<>(List.of(""));
+        String cur = ls.get(caretLine);
+        int safeCol = Math.min(caretCol, cur.length());
+        String newLine = cur.substring(0, safeCol) + s + cur.substring(safeCol);
+        ls.set(caretLine, newLine);
+        caretCol = safeCol + s.length();
+        setLines(ls);
+    }
+
+    private void refreshHints() {
+        if (hintsProvider == null) { hints = List.of(); return; }
+        String prefix = currentToken();
+        hints = hintsProvider.apply(prefix);
+        hintIndex = hints.isEmpty() ? -1 : 0;
+    }
+
+    private String currentToken() {
+        List<String> ls = lines();
+        if (ls.isEmpty()) return "";
+        String cur = ls.get(caretLine);
+        int start = Math.max(0, Math.min(caretCol, cur.length()));
+        int left = start;
+        while (left > 0 && !Character.isWhitespace(cur.charAt(left-1))) left--;
+        return cur.substring(left, start);
+    }
+
+    private void pushUndo() {
+        undoStack.push(new State(text, caretLine, caretCol, scroll));
+        while (undoStack.size() > MAX_HISTORY) undoStack.removeLast();
+        redoStack.clear();
+    }
+
+    private void undo() {
+        if (undoStack.size() <= 1) return;
+        State current = new State(text, caretLine, caretCol, scroll);
+        State prev = undoStack.pop();
+        State target = undoStack.peek();
+        if (target != null) {
+            redoStack.push(current);
+            applyState(target);
+        } else {
+            applyState(prev);
+        }
+    }
+
+    private void redo() {
+        if (redoStack.isEmpty()) return;
+        State next = redoStack.pop();
+        undoStack.push(next);
+        applyState(next);
+    }
+
+    private void applyState(State s) {
+        this.text = s.text;
+        this.caretLine = s.line;
+        this.caretCol = s.col;
+        this.scroll = s.scroll;
+        clampCaret();
+        refreshHints();
+        analyzeErrors();
+    }
+
+    private void clampCaret() {
+        List<String> ls = lines();
+        caretLine = Math.max(0, Math.min(caretLine, ls.size()-1));
+        caretCol = Math.max(0, Math.min(caretCol, ls.get(caretLine).length()));
+    }
+
+    private record State(String text, int line, int col, int scroll) {}
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\util\PathsUtil.java =====
+
+package org.trivait.minecode.util;
+
+import net.fabricmc.loader.api.FabricLoader;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+public class PathsUtil {
+    public static Path getConfigDir() {
+        return FabricLoader.getInstance().getConfigDir().resolve("minecode");
+    }
+
+    public static Path getScriptsDir() {
+        Path p = getConfigDir().resolve("scripts");
+        try {
+            Files.createDirectories(p);
+        } catch (Exception ignored){}
+        return p;
+    }
+
+    public static Path resolveScript(String name) {
+        return getScriptsDir().resolve(name + ".mc");
+    }
+}
+
+
+===== D:\my_mods\MineCode\src\main\java\org\trivait\minecode\util\ToastUtil.java =====
+
+package org.trivait.minecode.util;
+
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.text.Text;
+
+public class ToastUtil {
+    public static void info(String key) {
+        MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.translatable(key));
+    }
+
+    public static void infoText(Text text) {
+        MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(text);
+    }
+}

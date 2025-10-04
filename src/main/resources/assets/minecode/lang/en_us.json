@@ -1,15 +1,39 @@
 {
-  "key.autocode.open_menu": "Open Code Menu",
-  "key.autocode.run_script": "Run Script",
-  "screen.autocode.title": "Code Menu",
-  "screen.autocode.done": "Done",
-  "screen.autocode.del": "🗑",
-  "screen.autocode.confirm_delete": "",
-  "screen.autocode.confirm_delete.message": "Do you want delete ALL code?",
-  "screen.autocode.yes": "Yes!",
-  "screen.autocode.no": "No",
-  "minecode.errors.label": "Errors: ",
-  "minecode.button.copy.tooltip": "Copy code",
-  "minecode.button.link.tooltip": "Open documentation",
-  "minecode.button.clear.tooltip": "Delete code"
+  "minecode.title": "MineCode",
+  "minecode.menu.open": "Open MineCode Menu",
+  "minecode.menu.run": "Run Script",
+  "minecode.menu.stop": "Stop Script",
+
+  "minecode.button.save": "Save",
+  "minecode.button.run": "Run",
+  "minecode.button.stop": "Stop",
+  "minecode.button.api": "API",
+  "minecode.button.new": "New",
+  "minecode.button.back": "Back",
+
+  "minecode.screen.editor": "Script Editor",
+  "minecode.screen.api": "API Reference",
+  "minecode.screen.manager": "Script Manager",
+
+  "minecode.placeholder.scriptname": "Script name...",
+  "minecode.placeholder.search": "Search...",
+
+  "minecode.toast.saved": "Script saved",
+  "minecode.toast.running": "Script running...",
+  "minecode.toast.stopped": "Script stopped",
+
+  "minecode.api.say": "Outputs text into chat",
+  "minecode.api.wait": "Pauses execution for N ticks",
+  "minecode.api.look": "Rotates the player by yaw/pitch",
+  "minecode.api.walk": "Moves the player forward/backward",
+
+  "minecode.api.int": "Declares an integer variable",
+  "minecode.api.boolean": "Declares a boolean variable",
+  "minecode.api.string": "Declares a string variable",
+
+  "minecode.api.if": "Conditional branching (if/else/endif)",
+  "minecode.api.while": "Loop with pre-condition (while/endwhile)",
+  "minecode.api.do": "Loop with post-condition (do/while)",
+  "minecode.api.for": "Loop with init/condition/update (for/endfor)",
+  "minecode.api.switch": "Switch-case branching (switch/case/default/endswitch)"
 }
